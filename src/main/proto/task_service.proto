@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.noorimat.taskqueue.grpc";
+option java_outer_classname = "TaskServiceProto";
+
+package taskqueue;
+
+service TaskService {
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+}
+
+message SubmitTaskRequest {
+  string payload = 1;
+  int32 max_retries = 2;
+}
+
+message SubmitTaskResponse {
+  string task_id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetTaskStatusRequest {
+  string task_id = 1;
+}
+
+message GetTaskStatusResponse {
+  string task_id = 1;
+  string status = 2;
+  int32 attempt_count = 3;
+  bool found = 4;
+}
+
+message ListTasksRequest {
+  string status_filter = 1;
+}
+
+message ListTasksResponse {
+  repeated TaskInfo tasks = 1;
+}
+
+message TaskInfo {
+  string task_id = 1;
+  string payload = 2;
+  string status = 3;
+  int32 attempt_count = 4;
+}
