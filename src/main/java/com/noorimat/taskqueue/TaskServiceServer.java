@@ -18,11 +18,14 @@ public class TaskServiceServer {
     private final TaskQueue queue;
     private final TaskRepository repository;
     private final TaskExecutor executor;
+    private final MetricsServer metricsServer;
 
-    public TaskServiceServer(int port, TaskQueue queue, TaskRepository repository, TaskExecutor executor) {
+    public TaskServiceServer(int port, TaskQueue queue, TaskRepository repository, TaskExecutor executor) throws IOException {
         this.queue = queue;
         this.repository = repository;
         this.executor = executor;
+        this.metricsServer = new MetricsServer(9090, queue, repository);
+        this.executor.setMetricsServer(metricsServer);  // WIRE IT UP
         this.server = ServerBuilder.forPort(port)
                 .addService(new TaskServiceImpl())
                 .build();
@@ -30,7 +33,9 @@ public class TaskServiceServer {
 
     public void start() throws IOException {
         server.start();
+        metricsServer.start();
         logger.info("gRPC server started on port {}", server.getPort());
+        logger.info("Metrics available at http://localhost:9090/metrics");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down gRPC server...");
@@ -45,6 +50,7 @@ public class TaskServiceServer {
     public void stop() throws InterruptedException {
         if (server != null) {
             server.shutdown().awaitTermination(30, TimeUnit.SECONDS);
+            metricsServer.stop();
             logger.info("gRPC server stopped");
         }
     }
@@ -63,6 +69,7 @@ public class TaskServiceServer {
                 Task task = new Task(request.getPayload());
                 repository.save(task);
                 queue.enqueue(task);
+                metricsServer.incrementSubmitted();  // TRACK SUBMISSION
 
                 SubmitTaskResponse response = SubmitTaskResponse.newBuilder()
                         .setTaskId(task.getId())
@@ -152,14 +159,11 @@ public class TaskServiceServer {
         TaskRepository repo = new TaskRepository("tasks.db");
         TaskQueue queue = new TaskQueue();
 
-        // Load pending tasks
         repo.loadPendingTasks().forEach(queue::enqueue);
 
-        // Start executor with 3 workers
         TaskExecutor executor = new TaskExecutor(queue, repo, 3);
         executor.start();
 
-        // Start gRPC server on port 50051
         TaskServiceServer server = new TaskServiceServer(50051, queue, repo, executor);
         server.start();
 

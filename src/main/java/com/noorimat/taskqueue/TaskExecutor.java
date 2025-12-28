@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,6 +18,7 @@ public class TaskExecutor {
     private final ExecutorService executorService;
     private final AtomicBoolean running;
     private final int workerCount;
+    private MetricsServer metricsServer;  // ADD THIS
 
     public TaskExecutor(TaskQueue queue, TaskRepository repository, int workerCount) {
         this.queue = queue;
@@ -24,6 +26,11 @@ public class TaskExecutor {
         this.workerCount = workerCount;
         this.executorService = Executors.newFixedThreadPool(workerCount);
         this.running = new AtomicBoolean(false);
+    }
+
+    // ADD THIS METHOD
+    public void setMetricsServer(MetricsServer metricsServer) {
+        this.metricsServer = metricsServer;
     }
 
     public void start() {
@@ -45,7 +52,6 @@ public class TaskExecutor {
                 queue.dequeue().ifPresentOrElse(
                         task -> processTask(task, workerId),
                         () -> {
-                            // Queue is empty, sleep briefly
                             try {
                                 Thread.sleep(100);
                             } catch (InterruptedException e) {
@@ -69,26 +75,30 @@ public class TaskExecutor {
             task.incrementAttempt();
             repository.save(task);
 
-            // Simulate actual work (replace with real task execution)
             executeTask(task);
 
             task.setStatus(TaskStatus.COMPLETED);
             repository.markCompleted(task.getId());
 
+            if (metricsServer != null) {  // ADD THIS
+                metricsServer.incrementCompleted();
+            }
+
             logger.info("Worker-{} completed: {}", workerId, task.getId());
 
         } catch (Exception e) {
             logger.error("Worker-{} failed task: {}", workerId, task.getId(), e);
+            if (metricsServer != null) {  // ADD THIS
+                metricsServer.incrementFailed();
+            }
             handleFailedTask(task);
         }
     }
 
     private void executeTask(Task task) throws InterruptedException {
-        // Simulate different task durations
         long duration = 500 + (long)(Math.random() * 1000);
         Thread.sleep(duration);
 
-        // Simulate occasional failures (10% chance)
         if (Math.random() < 0.1) {
             throw new RuntimeException("Random task failure for testing");
         }
@@ -101,7 +111,7 @@ public class TaskExecutor {
                         task.getId(), task.getAttemptCount(), task.getMaxRetries());
                 task.setStatus(TaskStatus.PENDING);
                 repository.save(task);
-                queue.enqueue(task); // Re-queue for retry
+                queue.enqueue(task);
             } else {
                 logger.warn("Task failed permanently: {}", task.getId());
                 task.setStatus(TaskStatus.FAILED);
