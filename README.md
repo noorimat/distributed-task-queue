@@ -334,6 +334,6 @@ MIT License
 
 ---
 
-**Built as a portfolio project to demonstrate distributed systems, concurrent programming, and production engineering skills.**
+**Built to demonstrate distributed systems, concurrent programming, and production engineering skills.**
 
 **Technologies**: Java 17 • gRPC • Protocol Buffers • SQLite • Gradle
